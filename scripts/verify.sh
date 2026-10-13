@@ -93,6 +93,22 @@ check "the api cannot reach the internet" bash -c \
   "! kubectl --context ${KUBE_CONTEXT} exec -n ${NAMESPACE} deploy/api -- python -c \
   \"import socket; socket.create_connection(('1.1.1.1', 443), timeout=5).close()\""
 
+step "GitOps"
+check "the Argo CD application is synced and healthy" equals "Synced/Healthy" \
+  kube -n argocd get application hardening-lab \
+  -o jsonpath='{.status.sync.status}/{.status.health.status}'
+check "self-heal and prune are enabled" equals "true true" \
+  kube -n argocd get application hardening-lab \
+  -o jsonpath='{.spec.syncPolicy.automated.selfHeal} {.spec.syncPolicy.automated.prune}'
+check "the project accepts only this repository" bash -c \
+  "[ \"$(kube -n argocd get appproject hardening-lab -o jsonpath='{.spec.sourceRepos[*]}')\" = \
+   'https://github.com/AlexandrLopes/kubernetes-hardening-lab.git' ]"
+
+step "Runtime detection"
+check "Falco is running" kube -n falco get daemonset falco
+check "the lab rules are loaded" bash -c \
+  "kube -n falco get configmap falco-rules -o jsonpath='{.data}' | grep -q 'Shell opened in a shop container'"
+
 step "Application"
 check "the api answers its health endpoint" \
   kube exec -n "${NAMESPACE}" deploy/api -- python -c \

@@ -1,0 +1,27 @@
+# Used by scripts/simulate-incident.sh to show the token rule firing. The
+# application pods mount no ServiceAccount token, so reading one there produces
+# nothing to alert on; this pod mounts one on purpose, is read once, and is
+# deleted right after.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: token-canary
+spec:
+  automountServiceAccountToken: true
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: registry.internal:5000/api:0.1.0
+      command: ["sleep", "120"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        limits:
+          cpu: 100m
+          memory: 64Mi

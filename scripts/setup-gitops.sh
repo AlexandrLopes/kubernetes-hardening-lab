@@ -11,6 +11,19 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 require kubectl jq
 
+step "Git and the cluster must agree"
+# Argo CD applies what is in the remote repository, not what is on this machine.
+# A re-sealed secret that was never pushed is the usual way this bites: the
+# cluster would keep receiving a SealedSecret its controller cannot decrypt.
+if [ -n "$(git -C "${REPO_ROOT}" status --porcelain manifests/)" ]; then
+  fail "manifests/ has uncommitted changes; commit and push them before Argo CD takes over"
+fi
+git -C "${REPO_ROOT}" fetch --quiet origin main
+if [ -n "$(git -C "${REPO_ROOT}" diff --name-only origin/main -- manifests/)" ]; then
+  fail "manifests/ differs from origin/main; push your commits before Argo CD takes over"
+fi
+info "manifests/ matches origin/main"
+
 step "Argo CD (${ARGOCD_VERSION})"
 if kube -n argocd get deployment argocd-server >/dev/null 2>&1; then
   info "already installed"

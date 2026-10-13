@@ -1,0 +1,54 @@
+# Falco watches what the containers actually do at runtime. The other controls
+# decide what may start; this one notices what happens afterwards.
+#
+# One instance on the worker node is enough for the lab, and it keeps the
+# control-plane noise out of the alerts.
+driver:
+  kind: modern_ebpf
+
+collectors:
+  kubernetes:
+    enabled: true
+
+nodeSelector:
+  kubernetes.io/hostname: hardening-lab-worker
+
+tolerations: []
+
+falco:
+  json_output: true
+  priority: notice
+  rules_files:
+    - /etc/falco/falco_rules.yaml
+    - /etc/falco/rules.d
+
+# Lab rules: the two moves an attacker makes right after getting into a pod.
+customRules:
+  lab-rules.yaml: |-
+    - macro: shop_container
+      condition: (k8s.ns.name = "shop" and container.id != host)
+
+    - rule: Shell opened in a shop container
+      desc: >
+        A shell was started inside an application container. The images here ship
+        no shell for a person to use, so this means someone exec'd into the pod.
+      condition: spawned_process and shop_container and proc.name in (shell_binaries)
+      output: >
+        Shell started in a shop container (user=%user.name shell=%proc.name
+        parent=%proc.pname pod=%k8s.pod.name image=%container.image.repository)
+      priority: WARNING
+      tags: [lab, container, shell]
+
+    - rule: ServiceAccount token read in a shop container
+      desc: >
+        A process read the mounted ServiceAccount token. These workloads mount no
+        token at all, so any read is either a mistake or someone looking for
+        credentials to call the Kubernetes API.
+      condition: >
+        open_read and shop_container
+        and fd.name startswith /var/run/secrets/kubernetes.io/serviceaccount
+      output: >
+        ServiceAccount token read in a shop container (user=%user.name
+        file=%fd.name process=%proc.name pod=%k8s.pod.name)
+      priority: CRITICAL
+      tags: [lab, container, credentials]
