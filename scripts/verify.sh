@@ -72,26 +72,20 @@ check "no plaintext password is left in the manifests" bash -c \
 
 step "Network"
 check "a default-deny policy exists" kube get networkpolicy default-deny -n "${NAMESPACE}"
-check "the api reaches the database" bash -c \
-  "kube exec -n ${NAMESPACE} deploy/api -- python -c \"
-import os, socket
-socket.create_connection(('postgres', 5432), timeout=5).close()\""
+check "the api reaches the database" \
+  kube exec -n "${NAMESPACE}" deploy/api -- python -c \
+  "import socket; socket.create_connection(('postgres', 5432), timeout=5).close()"
 check "the api cannot reach the internet" bash -c \
-  "! kube exec -n ${NAMESPACE} deploy/api -- python -c \"
-import socket
-socket.create_connection(('1.1.1.1', 443), timeout=5).close()\" 2>/dev/null"
+  "! kubectl --context ${KUBE_CONTEXT} exec -n ${NAMESPACE} deploy/api -- python -c \
+  \"import socket; socket.create_connection(('1.1.1.1', 443), timeout=5).close()\""
 
 step "Application"
-check "the api answers its health endpoint" bash -c \
-  "kube exec -n ${NAMESPACE} deploy/api -- python -c \"
-import urllib.request, json
-body = urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=5).read()
-assert json.loads(body)['status'] == 'ok'\""
-check "the api reports the database as reachable" bash -c \
-  "kube exec -n ${NAMESPACE} deploy/api -- python -c \"
-import urllib.request, json
-body = urllib.request.urlopen('http://127.0.0.1:8080/', timeout=10).read()
-assert json.loads(body)['status'] == 'ok'\""
+check "the api answers its health endpoint" \
+  kube exec -n "${NAMESPACE}" deploy/api -- python -c \
+  "import json, urllib.request; assert json.loads(urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=5).read())['status'] == 'ok'"
+check "the api reports the database as reachable" \
+  kube exec -n "${NAMESPACE}" deploy/api -- python -c \
+  "import json, urllib.request; assert json.loads(urllib.request.urlopen('http://127.0.0.1:8080/', timeout=10).read())['status'] == 'ok'"
 
 printf '\nResult: %s passed, %s failed\n' "${PASSED}" "${FAILED}"
 [ "${FAILED}" -eq 0 ]

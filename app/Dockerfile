@@ -7,7 +7,7 @@ RUN adduser -D -u 10001 -s /sbin/nologin app
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir --require-hashes=false -r requirements.txt \
+RUN pip install --no-cache-dir -r requirements.txt \
     && rm -rf /root/.cache
 
 COPY main.py .

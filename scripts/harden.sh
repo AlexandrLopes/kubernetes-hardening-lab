@@ -13,6 +13,7 @@ require kubectl kubeseal
 step "Removing the insecure baseline"
 kube delete -f "${REPO_ROOT}/manifests/base/api.yaml" -f "${REPO_ROOT}/manifests/base/postgres.yaml" \
   --ignore-not-found --wait
+kube -n "${NAMESPACE}" delete pods --field-selector status.phase=Failed --ignore-not-found >/dev/null
 info "baseline removed"
 
 step "Pod Security on the namespace"
