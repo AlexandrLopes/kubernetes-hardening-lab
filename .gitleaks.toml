@@ -1,0 +1,13 @@
+title = "kubernetes-hardening-lab"
+
+[extend]
+useDefault = true
+
+# SealedSecrets are ciphertext by design: the value can only be read by the
+# in-cluster controller that holds the private key, so committing it is the
+# point of the tool. The exception is limited to those files by name.
+[allowlist]
+description = "SealedSecret ciphertext is not a plaintext secret"
+paths = [
+  '''manifests/secrets/.*-sealed\.yaml$''',
+]

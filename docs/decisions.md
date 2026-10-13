@@ -55,3 +55,10 @@ fail, and its headers say so in the file itself.
 The workflow pins the checkout action by commit SHA, and downloads gitleaks and
 Trivy at a fixed version, checking the published SHA-256 before running them. A
 tag can be moved; a commit and a checksum cannot.
+
+## One gitleaks exception, for ciphertext only
+
+The secret scanner flags the SealedSecret, because an encrypted value looks like
+a credential. `.gitleaks.toml` allows that one path pattern and nothing else; a
+plaintext key dropped anywhere in the repository is still caught, which was
+checked with a deliberate test file before the exception was committed.

@@ -22,7 +22,7 @@ shellcheck -x -P scripts scripts/*.sh
 info "clean"
 
 step "[2/4] Secrets in the git history (gitleaks)"
-gitleaks detect --no-banner --redact
+gitleaks detect --no-banner --redact --config .gitleaks.toml
 info "no leaks"
 
 step "[3/4] Manifest misconfiguration (trivy config)"
