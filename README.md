@@ -165,3 +165,13 @@ push, with a single documented exception for the SealedSecret path, checked
 against a deliberate test file to confirm the scanner still catches a real key.
 The CI workflow pins the checkout action by commit SHA and verifies the SHA-256
 of gitleaks and Trivy before running them.
+
+## How this was built
+
+Built with Claude Code as a pair. I set the rules the work had to follow, decided
+the scope and reviewed every change; the assistant proposed and implemented
+inside those rules. Nothing was accepted on trust: the cluster was built from
+scratch, `verify.sh` was run against it, and each check was proven by removing
+the control it checks and watching the check fail. The problems found that way,
+and how they were fixed, are in [`docs/decisions.md`](docs/decisions.md) and in
+the commit history.
