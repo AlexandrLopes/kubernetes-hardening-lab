@@ -20,6 +20,12 @@ step "Pod Security on the namespace"
 kube apply -f "${REPO_ROOT}/manifests/hardened/00-namespace.yaml"
 info "enforce=restricted"
 
+step "Signature verification key"
+[ -f "${COSIGN_PUB}" ] || fail "cosign.pub is missing; run scripts/sign-image.sh first"
+kube -n kyverno create secret generic cosign-public-key \
+  --from-file=cosign.pub="${COSIGN_PUB}" --dry-run=client -o yaml | kube apply -f - >/dev/null
+info "public key delivered to kyverno"
+
 step "Admission policies"
 kube apply -f "${REPO_ROOT}/manifests/kyverno-policies/"
 kube wait --for=condition=ready clusterpolicy --all --timeout=120s

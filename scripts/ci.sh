@@ -31,8 +31,8 @@ trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL \
 info "no HIGH or CRITICAL findings"
 
 step "[4/4] Image vulnerabilities (trivy image)"
-docker image inspect "${APP_IMAGE}" >/dev/null 2>&1 || docker build --quiet --tag "${APP_IMAGE}" app >/dev/null
-trivy image --quiet --exit-code 1 --severity CRITICAL --ignore-unfixed "${APP_IMAGE}"
+docker image inspect "${APP_IMAGE_LOCAL}" >/dev/null 2>&1 || docker build --quiet --tag "${APP_IMAGE_LOCAL}" app >/dev/null
+trivy image --quiet --exit-code 1 --severity CRITICAL --ignore-unfixed "${APP_IMAGE_LOCAL}"
 info "no CRITICAL vulnerabilities"
 
 printf '\nAll gates passed.\n'

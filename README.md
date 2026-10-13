@@ -18,6 +18,7 @@ running cluster.
 | Area | Where |
 |------|-------|
 | Insecure baseline (the "before") | [`manifests/base/`](manifests/base) |
+| Internal registry and image signing | [`scripts/setup-registry.sh`](scripts/setup-registry.sh), [`scripts/sign-image.sh`](scripts/sign-image.sh) |
 | Hardened workloads | [`manifests/hardened/`](manifests/hardened) |
 | Admission policies | [`manifests/kyverno-policies/`](manifests/kyverno-policies) |
 | Network segmentation | [`manifests/network-policies/`](manifests/network-policies) |
@@ -33,11 +34,12 @@ running cluster.
 | Root filesystem | writable | read-only, with explicit volumes for what must be written |
 | Capabilities | all | `drop: ["ALL"]` |
 | Seccomp | none | `RuntimeDefault` (added by a Kyverno mutation when missing) |
-| Image | `:latest`, mutable | pinned tag, base image pinned by digest |
+| Image | `:latest`, from the local cache | internal registry only, cosign-signed, tag rewritten to the verified digest |
 | Database password | hardcoded in the manifest | SealedSecret, decrypted only inside the cluster |
 | API access | ServiceAccount token mounted by default | no token, no permissions |
 | Resources | unbounded | requests and limits on every container |
 | Network | every pod reaches every pod | default-deny, with three explicit paths |
+| Image provenance | nothing checks where the image came from | admission refuses an unsigned image, and any registry but the internal one |
 
 ## Requirements
 
@@ -47,6 +49,8 @@ running cluster.
 | Kind | v0.33.0 |
 | kubectl | v1.36.1 |
 | kubeseal | v0.40.0 |
+| cosign | v3.1.3 |
+| crane | 0.22.1 |
 | Trivy | 0.74.0 |
 | gitleaks | 8.30.1 |
 | shellcheck | 0.11.0 |
@@ -65,56 +69,74 @@ bash scripts/setup-cluster.sh
 ```
 
 Creates the Kind cluster `hardening-lab` (one control-plane, one worker, default
-CNI disabled), installs Calico, Kyverno and the Sealed Secrets controller, builds
-the application image into the nodes, and deploys the deliberately insecure API
-and database into the `shop` namespace.
+CNI disabled), installs Calico, Kyverno and the Sealed Secrets controller, starts
+the internal registry and teaches the cluster to use it, builds the application
+image into the nodes, and deploys the deliberately insecure API and database into
+the `shop` namespace.
 
 Expected: `baseline deployed to the shop namespace`, and `kubectl get pods -n shop`
 shows both insecure pods running.
 
-### Step 2 — Apply the hardening
+### Step 2 — Publish and sign the images
+
+```bash
+bash scripts/sign-image.sh
+```
+
+Builds the application image and pushes it to the internal registry, copies the
+database image there by digest, and signs both with cosign. The private key stays
+on the machine and is git-ignored; `cosign.pub` is committed, because the cluster
+needs it to verify. An extra unsigned tag is pushed on purpose, so the policy can
+be shown rejecting something.
+
+Expected: `signed and verified api@sha256:...` and the same for postgres.
+
+### Step 3 — Apply the hardening
 
 ```bash
 bash scripts/harden.sh
 ```
 
-Removes the baseline, labels the namespace with the `restricted` Pod Security
+Removes the baseline, delivers the public key to Kyverno, labels the namespace with the `restricted` Pod Security
 Standard in `enforce` mode, applies the Kyverno policies and the NetworkPolicies,
 generates the database password as a SealedSecret, and deploys the hardened
 workloads.
 
-Expected: `5 policies ready`, `5 policies applied`,
+Expected: `7 policies ready`, `5 policies applied`,
 `Secret created by the controller`, and both deployments rolled out.
 
-### Step 3 — Verify every control
+### Step 4 — Verify every control
 
 ```bash
 bash scripts/verify.sh
 ```
 
-Twenty-three checks against the running cluster: platform, Pod Security,
-admission policies, workload hardening, secrets, network segmentation and the
+Twenty-nine checks against the running cluster: platform, Pod Security, admission
+policies, supply chain, workload hardening, secrets, network segmentation and the
 application itself.
 
-Expected: `Result: 23 passed, 0 failed`.
+Expected: `Result: 29 passed, 0 failed`.
 
 The checks are not decorative. Deleting the NetworkPolicy that lets the API reach
 the database turns `the api reaches the database` into a failure, and restoring
 the policy turns it back.
 
-### Step 4 — Watch the controls refuse a pod
+### Step 5 — Watch the controls refuse a pod
 
 ```bash
 kubectl apply -n shop --dry-run=server -f tests/privileged-pod.yaml
 kubectl apply -n shop --dry-run=server -f tests/latest-tag-pod.yaml
 kubectl apply -n shop --dry-run=server -f tests/no-limits-pod.yaml
+kubectl apply -n shop --dry-run=server -f tests/unsigned-image-pod.yaml
 ```
 
 Each manifest violates one rule. `--dry-run=server` creates nothing, and the
 cluster still evaluates it, so the error names the layer that refused the pod:
-Pod Security Admission for the first, Kyverno for the other two.
+Pod Security Admission for the first, Kyverno for the rest. The last one is the
+interesting case: the image exists in the internal registry and breaks no other
+rule, but nothing signed it.
 
-### Step 5 — Run the CI gates locally
+### Step 6 — Run the CI gates locally
 
 ```bash
 bash scripts/ci.sh
@@ -137,10 +159,10 @@ bash scripts/teardown.sh
 | Control | Implementation | Verified by |
 |---------|----------------|-------------|
 | Pod hardening | `manifests/hardened/`: non-root, `drop: ALL`, seccomp `RuntimeDefault`, read-only root filesystem, no privilege escalation, no mounted token, requests and limits | `verify.sh`; Trivy config gate |
-| Admission control | `restricted` Pod Security in `enforce` mode, plus 4 validating Kyverno policies and 1 mutating policy (default seccomp) | rejection tests in `verify.sh` and `tests/` |
+| Admission control | `restricted` Pod Security in `enforce` mode, plus 5 validating Kyverno policies and 1 mutating policy (default seccomp) | rejection tests in `verify.sh` and `tests/` |
 | Network segmentation | `manifests/network-policies/`: default-deny, DNS, `api -> postgres:5432`, node to `api:8080` for probes | connectivity tests in `verify.sh` |
 | Secrets | password generated locally and committed only as a SealedSecret; plaintext never touches disk or Git | `verify.sh`; gitleaks over the full history |
-| Supply chain | base image pinned by digest, application image pinned by tag, Trivy gate on CRITICAL findings | `ci.sh`, GitHub Actions |
+| Supply chain | internal registry as the only allowed source, cosign signature required at admission, tag rewritten to the verified digest, base image pinned by digest, Trivy gate on CRITICAL findings | `verify.sh`, `ci.sh`, GitHub Actions |
 | CI | shellcheck, gitleaks, Trivy on manifests and image, with the tools pinned and checksum-verified | the CI badge above |
 
 ## Repository layout
@@ -152,9 +174,21 @@ manifests/base/             insecure baseline (reference only, never a template)
 manifests/hardened/         namespace, service accounts, database and API
 manifests/kyverno-policies/, network-policies/, secrets/
 scripts/                    every step above
+cosign.pub                  the public key the cluster verifies against
 tests/                      pods that must be rejected
 docs/decisions.md           decision log
 ```
+
+## Notes
+
+The signing key pair is created on first run. `cosign.key` never leaves the
+machine and is git-ignored; `cosign.pub` is committed, so running the lab on
+another machine produces a new pair and a new `cosign.pub`.
+
+The internal registry speaks plain HTTP, which is why the lab configures
+containerd on each node, adds a CoreDNS entry so pods resolve the registry by the
+same name, and allows Kyverno to read an insecure registry. In a real cluster the
+registry would have TLS and none of that would be needed.
 
 ## Repository security
 

@@ -1,0 +1,42 @@
+# Every image from the internal registry must carry a cosign signature made with
+# the key pair of this lab. The public key is delivered to the cluster as a
+# Secret by scripts/harden.sh; the private key never leaves the machine.
+#
+# mutateDigest rewrites the accepted tag into the digest that was verified, so
+# the pod runs exactly the image whose signature was checked.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signatures
+spec:
+  background: false
+  webhookConfiguration:
+    failurePolicy: Fail
+  rules:
+    - name: verify-cosign-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - shop
+      verifyImages:
+        - imageReferences:
+            - "registry.internal:5000/*"
+          failureAction: Enforce
+          # Kyverno caches a verification result per image reference. In a lab
+          # where the same tag is rebuilt, that cache would approve a new,
+          # unsigned image because an older one with the same tag passed.
+          useCache: false
+          mutateDigest: true
+          verifyDigest: false
+          required: true
+          attestors:
+            - entries:
+                - keys:
+                    secret:
+                      name: cosign-public-key
+                      namespace: kyverno
+                    rekor:
+                      ignoreTlog: true

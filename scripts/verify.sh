@@ -7,7 +7,7 @@
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-require kubectl
+require kubectl cosign curl
 
 PASSED=0
 FAILED=0
@@ -48,6 +48,20 @@ check "a pod using :latest is rejected" bash -c \
   "! kube apply -n ${NAMESPACE} --dry-run=server -f ${REPO_ROOT}/tests/latest-tag-pod.yaml"
 check "a pod without limits is rejected" bash -c \
   "! kube apply -n ${NAMESPACE} --dry-run=server -f ${REPO_ROOT}/tests/no-limits-pod.yaml"
+
+step "Supply chain"
+check "the internal registry answers" bash -c \
+  "curl -sf http://${REGISTRY_FROM_HOST}/v2/_catalog >/dev/null"
+check "the api image comes from the internal registry" bash -c \
+  "kube get deployment api -n ${NAMESPACE} -o jsonpath='{.spec.template.spec.containers[0].image}' | grep -q '^${REGISTRY_HOST}/'"
+check "the database image comes from the internal registry" bash -c \
+  "kube get deployment postgres -n ${NAMESPACE} -o jsonpath='{.spec.template.spec.containers[0].image}' | grep -q '^${REGISTRY_HOST}/'"
+check "the running api pod is pinned to a digest" bash -c \
+  "kube get pod -n ${NAMESPACE} -l app=api -o jsonpath='{.items[0].spec.containers[0].image}' | grep -q '@sha256:'"
+check "the signed image verifies with the public key" bash -c \
+  "cosign verify --key ${COSIGN_PUB} --insecure-ignore-tlog=true ${REGISTRY_FROM_HOST}/api:0.1.0 >/dev/null 2>&1"
+check "an unsigned image is rejected" bash -c \
+  "! kube apply -n ${NAMESPACE} --dry-run=server -f ${REPO_ROOT}/tests/unsigned-image-pod.yaml"
 
 step "Workloads"
 check "the api deployment is available" kube -n "${NAMESPACE}" get deployment api

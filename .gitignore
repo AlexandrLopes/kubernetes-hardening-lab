@@ -4,3 +4,4 @@
 *.pem
 kubeconfig*
 __pycache__/
+cosign.key

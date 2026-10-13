@@ -1,0 +1,25 @@
+# Compliant in every other way, and the image does exist in the internal
+# registry, but it carries no signature: expected to be rejected by the Kyverno
+# policy verify-image-signatures.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-unsigned-image
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: registry.internal:5000/api:unsigned
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        limits:
+          cpu: 100m
+          memory: 64Mi

@@ -46,7 +46,7 @@ jobs:
           sudo install -m 0755 trivy /usr/local/bin/trivy
 
       - name: Build the application image
-        run: docker build --tag hardening-lab/api:0.1.0 app
+        run: docker build --tag hardening-lab/api:0.1.0 app   # the tag scripts/ci.sh scans
 
       - name: Security gates
         run: bash scripts/ci.sh

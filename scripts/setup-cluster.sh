@@ -32,6 +32,9 @@ kube apply -f "https://github.com/bitnami-labs/sealed-secrets/releases/download/
 kube -n kube-system rollout status deployment/sealed-secrets-controller --timeout=300s
 info "controller ready"
 
+step "Internal registry"
+bash "${REPO_ROOT}/scripts/setup-registry.sh"
+
 step "Application image"
 bash "${REPO_ROOT}/scripts/build-image.sh"
 
@@ -40,4 +43,4 @@ kube create namespace "${NAMESPACE}" --dry-run=client -o yaml | kube apply -f -
 kube apply -f "${REPO_ROOT}/manifests/base/api.yaml" -f "${REPO_ROOT}/manifests/base/postgres.yaml"
 info "baseline deployed to the ${NAMESPACE} namespace"
 
-printf '\nNext: bash scripts/harden.sh\n'
+printf '\nNext: bash scripts/sign-image.sh, then bash scripts/harden.sh\n'

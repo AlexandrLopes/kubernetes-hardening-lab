@@ -1,0 +1,22 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+spec:
+  background: true
+  rules:
+    - name: allowed-registries
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - shop
+      validate:
+        failureAction: Enforce
+        message: "Images must come from the internal registry (registry.internal:5000)."
+        pattern:
+          spec:
+            containers:
+              - image: "registry.internal:5000/*"

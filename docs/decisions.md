@@ -62,3 +62,41 @@ The secret scanner flags the SealedSecret, because an encrypted value looks like
 a credential. `.gitleaks.toml` allows that one path pattern and nothing else; a
 plaintext key dropped anywhere in the repository is still caught, which was
 checked with a deliberate test file before the exception was committed.
+
+## An internal registry instead of pulling from the internet
+
+Admission can only trust what it can check. With every image coming from one
+registry inside the lab network, "where did this image come from" has a single
+answer, and the signature policy has something to verify. It also mirrors how an
+air-gapped environment works, where nothing is pulled from the internet at run
+time.
+
+## The cluster has to learn three things about that registry
+
+The registry speaks plain HTTP, so containerd on each node gets a `hosts.toml`
+entry for it; pods resolve names through CoreDNS, which knows nothing about
+Docker network aliases, so the registry is added there as a static host; and
+Kyverno is started with `--allowInsecureRegistry=true` so it can fetch
+signatures. All three exist because the registry has no TLS, and all three would
+disappear with a certificate.
+
+## Signatures belong to digests, not tags
+
+The first version of the rejection test pushed an unsigned tag that pointed at an
+already signed digest, and the cluster correctly accepted it: the signature
+covers the content, not the name. The test now builds a genuinely different image
+so the digest differs.
+
+## The image verification cache is off for this rule
+
+Kyverno caches a verification result per image reference for an hour. In a lab
+where the same tag is rebuilt, that cache approved a new unsigned image because
+an older one with the same tag had passed. `useCache: false` on the rule keeps
+the check honest here; in a cluster where tags are immutable the cache is worth
+keeping.
+
+## mutateDigest, so the pod runs what was verified
+
+The policy rewrites the accepted tag into the digest it verified. Without it, a
+tag could be repointed between admission and the image pull, and the pod would
+run something the cluster never checked.

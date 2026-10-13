@@ -6,7 +6,7 @@ metadata:
 spec:
   containers:
     - name: app
-      image: hardening-lab/api:0.1.0
+      image: registry.internal:5000/api:0.1.0
       securityContext:
         privileged: true
       resources:

@@ -7,6 +7,12 @@ name: hardening-lab
 networking:
   disableDefaultCNI: true
   podSubnet: "192.168.0.0/16"
+# containerd reads per-registry settings from /etc/containerd/certs.d, which
+# scripts/setup-registry.sh writes on each node for the internal registry.
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
 nodes:
   - role: control-plane
   - role: worker

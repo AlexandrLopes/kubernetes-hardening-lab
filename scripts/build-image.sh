@@ -10,8 +10,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 require docker kind
 
-docker build --quiet --tag "${APP_IMAGE}" --tag "hardening-lab/api:latest" "${REPO_ROOT}/app" >/dev/null
-info "built ${APP_IMAGE}"
+docker build --quiet --tag "${APP_IMAGE_LOCAL}" --tag "hardening-lab/api:latest" "${REPO_ROOT}/app" >/dev/null
+info "built ${APP_IMAGE_LOCAL}"
 
-kind load docker-image "${APP_IMAGE}" "hardening-lab/api:latest" --name "${CLUSTER_NAME}"
+kind load docker-image "${APP_IMAGE_LOCAL}" "hardening-lab/api:latest" --name "${CLUSTER_NAME}"
 info "loaded into the cluster nodes"
