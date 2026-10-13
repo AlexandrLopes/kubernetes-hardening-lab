@@ -4,5 +4,3 @@
 *.pem
 kubeconfig*
 __pycache__/
-CLAUDE.md
-.claude/
