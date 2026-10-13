@@ -1,0 +1,22 @@
+# A project restricted to this repository and these namespaces: an Application in
+# it cannot be pointed somewhere else or made to write anywhere else.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: hardening-lab
+  namespace: argocd
+spec:
+  description: The hardened workloads and the controls that keep them that way
+  sourceRepos:
+    - https://github.com/AlexandrLopes/kubernetes-hardening-lab.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: shop
+  clusterResourceWhitelist:
+    - group: kyverno.io
+      kind: ClusterPolicy
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

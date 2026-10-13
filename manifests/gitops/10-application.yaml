@@ -1,0 +1,35 @@
+# Git is the desired state. The cluster is corrected to match it: prune removes
+# what was deleted from Git, selfHeal undoes changes made directly in the
+# cluster. The insecure baseline is excluded, since it exists to be refused.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hardening-lab
+  namespace: argocd
+spec:
+  project: hardening-lab
+  source:
+    repoURL: https://github.com/AlexandrLopes/kubernetes-hardening-lab.git
+    targetRevision: main
+    path: manifests
+    directory:
+      recurse: true
+      exclude: "{base/*,gitops/*}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: shop
+  # The signature policy rewrites the image tag into the digest it verified, so
+  # the live Deployment never matches Git on that field. Ignoring it keeps the
+  # application Synced instead of fighting the admission controller forever.
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/template/spec/containers/0/image
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - RespectIgnoreDifferences=true
