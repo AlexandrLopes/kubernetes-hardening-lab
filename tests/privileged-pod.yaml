@@ -1,0 +1,15 @@
+# Expected to be rejected by Pod Security Admission (restricted).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-privileged
+spec:
+  containers:
+    - name: app
+      image: hardening-lab/api:0.1.0
+      securityContext:
+        privileged: true
+      resources:
+        limits:
+          cpu: 100m
+          memory: 64Mi

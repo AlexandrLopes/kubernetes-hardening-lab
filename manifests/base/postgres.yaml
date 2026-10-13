@@ -1,0 +1,49 @@
+# INSECURE BASELINE - deliberately vulnerable. Findings demonstrated here:
+#   - database password hardcoded in an environment variable
+#   - mutable image tag, not pinned by digest
+#   - no securityContext, no resource limits
+#   - reachable from every pod in the cluster (no NetworkPolicy)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: shop
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_PASSWORD
+              value: "ChangeMe123"
+            - name: POSTGRES_USER
+              value: "app"
+            - name: POSTGRES_DB
+              value: "app"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: shop
+  labels:
+    app: postgres
+spec:
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432

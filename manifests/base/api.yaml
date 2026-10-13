@@ -1,0 +1,49 @@
+# INSECURE BASELINE - deliberately vulnerable. Findings demonstrated here:
+#   - mutable image tag, pulled from a public registry, unscanned
+#   - privileged container running as root
+#   - database password hardcoded in an environment variable
+#   - ServiceAccount token mounted by default
+#   - no resource requests or limits, no seccomp profile, writable root filesystem
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: shop
+  labels:
+    app: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+        - name: api
+          image: hardening-lab/api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DB_PASSWORD
+              value: "ChangeMe123"
+          securityContext:
+            privileged: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: shop
+  labels:
+    app: api
+spec:
+  selector:
+    app: api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

@@ -1,0 +1,12 @@
+# Two nodes so scheduling and NetworkPolicies are exercised across hosts. The
+# default CNI is disabled because Calico is installed instead: NetworkPolicies
+# are only meaningful when the CNI enforces them.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: hardening-lab
+networking:
+  disableDefaultCNI: true
+  podSubnet: "192.168.0.0/16"
+nodes:
+  - role: control-plane
+  - role: worker

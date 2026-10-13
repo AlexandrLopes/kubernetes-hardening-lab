@@ -1,0 +1,23 @@
+# A mutation rather than a rejection: a pod without a seccomp profile is
+# admitted with RuntimeDefault added, instead of being refused.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: add-default-seccomp
+spec:
+  background: false
+  rules:
+    - name: add-seccomp-profile
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - shop
+      mutate:
+        patchStrategicMerge:
+          spec:
+            +(securityContext):
+              +(seccompProfile):
+                type: RuntimeDefault

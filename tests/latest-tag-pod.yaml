@@ -1,0 +1,24 @@
+# Passes Pod Security but uses a mutable tag: expected to be rejected by the
+# Kyverno policy disallow-latest-tag.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-latest-tag
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: hardening-lab/api:latest
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        limits:
+          cpu: 100m
+          memory: 64Mi

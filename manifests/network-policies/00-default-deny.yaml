@@ -1,0 +1,12 @@
+# Starting point: nothing enters or leaves a pod in this namespace unless a
+# later policy allows it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: shop
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
