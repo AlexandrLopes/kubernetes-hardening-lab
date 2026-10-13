@@ -19,6 +19,8 @@ running cluster.
 |------|-------|
 | Insecure baseline (the "before") | [`manifests/base/`](manifests/base) |
 | Internal registry and image signing | [`scripts/setup-registry.sh`](scripts/setup-registry.sh), [`scripts/sign-image.sh`](scripts/sign-image.sh) |
+| GitOps: Git as the desired state | [`manifests/gitops/`](manifests/gitops), [`scripts/setup-gitops.sh`](scripts/setup-gitops.sh) |
+| Runtime detection and the incident | [`manifests/falco/`](manifests/falco), [`scripts/simulate-incident.sh`](scripts/simulate-incident.sh) |
 | Hardened workloads | [`manifests/hardened/`](manifests/hardened) |
 | Admission policies | [`manifests/kyverno-policies/`](manifests/kyverno-policies) |
 | Network segmentation | [`manifests/network-policies/`](manifests/network-policies) |
@@ -40,6 +42,8 @@ running cluster.
 | Resources | unbounded | requests and limits on every container |
 | Network | every pod reaches every pod | default-deny, with three explicit paths |
 | Image provenance | nothing checks where the image came from | admission refuses an unsigned image, and any registry but the internal one |
+| Drift | whatever was last applied by hand stays | Argo CD restores the state in Git within seconds |
+| Runtime | nobody is watching | Falco alerts on a shell in a container and on reads of the ServiceAccount token |
 
 ## Requirements
 
@@ -51,12 +55,13 @@ running cluster.
 | kubeseal | v0.40.0 |
 | cosign | v3.1.3 |
 | crane | 0.22.1 |
+| helm | v4.3.0 |
 | Trivy | 0.74.0 |
 | gitleaks | 8.30.1 |
 | shellcheck | 0.11.0 |
 
-The cluster itself runs Kubernetes v1.37.0, with Calico v3.27.0, Kyverno v1.19.1
-and Sealed Secrets v0.40.0.
+The cluster itself runs Kubernetes v1.37.0, with Calico v3.27.0, Kyverno v1.19.1,
+Sealed Secrets v0.40.0, Argo CD v3.5.5 and Falco (chart 9.2.0).
 
 ## Step-by-step execution
 
@@ -111,11 +116,11 @@ Expected: `7 policies ready`, `5 policies applied`,
 bash scripts/verify.sh
 ```
 
-Twenty-nine checks against the running cluster: platform, Pod Security, admission
-policies, supply chain, workload hardening, secrets, network segmentation and the
-application itself.
+Thirty-four checks against the running cluster: platform, Pod Security, admission
+policies, supply chain, workload hardening, secrets, network segmentation, GitOps,
+runtime detection and the application itself.
 
-Expected: `Result: 29 passed, 0 failed`.
+Expected: `Result: 34 passed, 0 failed`.
 
 The checks are not decorative. Deleting the NetworkPolicy that lets the API reach
 the database turns `the api reaches the database` into a failure, and restoring
@@ -136,7 +141,42 @@ Pod Security Admission for the first, Kyverno for the rest. The last one is the
 interesting case: the image exists in the internal registry and breaks no other
 rule, but nothing signed it.
 
-### Step 6 — Run the CI gates locally
+### Step 6 — Hand the cluster to Git
+
+```bash
+bash scripts/setup-gitops.sh
+```
+
+Installs Argo CD and points it at this repository. From here on Git is the
+desired state: `prune` removes what was deleted from Git and `selfHeal` undoes
+changes made directly in the cluster. The script proves it by deleting the
+default-deny NetworkPolicy and waiting for Argo CD to put it back.
+
+Expected: `hardening-lab: Synced/Healthy` and
+`the deleted NetworkPolicy was restored from Git in 1s`.
+
+The script refuses to run while `manifests/` differs from `origin/main`, because
+Argo CD applies what is pushed, not what is on your machine.
+
+### Step 7 — Watch the containers at runtime
+
+```bash
+bash scripts/setup-falco.sh
+bash scripts/simulate-incident.sh
+```
+
+Admission control decides what may start; Falco watches what happens afterwards.
+Two lab rules cover the first two moves after someone reaches a pod: opening a
+shell, and reading the mounted ServiceAccount token.
+
+The simulation does both. The shell raises an alert. Reading the token in the
+application pod raises nothing, because no token is mounted there, so a pod that
+does mount one is created, read once and deleted, to show the rule itself works.
+
+Expected: both rules in the summary, and then the reminder that the attack had
+nowhere to go: non-root, read-only filesystem, no token, default-deny network.
+
+### Step 8 — Run the CI gates locally
 
 ```bash
 bash scripts/ci.sh
@@ -163,6 +203,8 @@ bash scripts/teardown.sh
 | Network segmentation | `manifests/network-policies/`: default-deny, DNS, `api -> postgres:5432`, node to `api:8080` for probes | connectivity tests in `verify.sh` |
 | Secrets | password generated locally and committed only as a SealedSecret; plaintext never touches disk or Git | `verify.sh`; gitleaks over the full history |
 | Supply chain | internal registry as the only allowed source, cosign signature required at admission, tag rewritten to the verified digest, base image pinned by digest, Trivy gate on CRITICAL findings | `verify.sh`, `ci.sh`, GitHub Actions |
+| GitOps | Argo CD with a project restricted to this repository, automated sync, prune and self-heal | drift test in `setup-gitops.sh`, checks in `verify.sh` |
+| Runtime detection | Falco with two lab rules: shell in a container, ServiceAccount token read | `simulate-incident.sh` |
 | CI | shellcheck, gitleaks, Trivy on manifests and image, with the tools pinned and checksum-verified | the CI badge above |
 
 ## Repository layout
@@ -173,6 +215,8 @@ kind/                       cluster definition (two nodes, default CNI disabled)
 manifests/base/             insecure baseline (reference only, never a template)
 manifests/hardened/         namespace, service accounts, database and API
 manifests/kyverno-policies/, network-policies/, secrets/
+manifests/gitops/            Argo CD project and application
+manifests/falco/             Falco values and the lab rules
 scripts/                    every step above
 cosign.pub                  the public key the cluster verifies against
 tests/                      pods that must be rejected
@@ -189,6 +233,13 @@ The internal registry speaks plain HTTP, which is why the lab configures
 containerd on each node, adds a CoreDNS entry so pods resolve the registry by the
 same name, and allows Kyverno to read an insecure registry. In a real cluster the
 registry would have TLS and none of that would be needed.
+
+## Known quirk
+
+A pod may show its image as `docker.io/library/import-...`: containerd keeps one
+copy per digest, and the first copy of that digest arrived through `kind load`
+when the insecure baseline was deployed. The digest is the one the signature
+policy verified.
 
 ## Repository security
 

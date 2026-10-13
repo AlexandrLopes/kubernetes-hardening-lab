@@ -100,3 +100,41 @@ keeping.
 The policy rewrites the accepted tag into the digest it verified. Without it, a
 tag could be repointed between admission and the image pull, and the pod would
 run something the cluster never checked.
+
+## Argo CD, and what it does with a mutated field
+
+The signature policy rewrites the image tag into the digest it verified, so the
+running Deployment never matches Git on that field. Left alone, Argo CD would
+report drift forever and keep trying to undo the admission controller. The
+application ignores that one field and keeps `RespectIgnoreDifferences` on, so
+everything else is still enforced.
+
+## The self-heal test starts from a manual sync
+
+Argo CD waits longer between successive self-heal corrections, and the counter
+survives across runs. The first version of the test deleted a policy, waited two
+minutes and declared failure, while Argo CD was simply backing off after earlier
+corrections. The test now triggers a manual sync first, which resets the counter,
+and the restore happens in about a second.
+
+## A re-sealed secret has to be pushed
+
+Rebuilding the cluster creates a new Sealed Secrets key pair, so the committed
+SealedSecret can no longer be decrypted and is regenerated locally. Until that
+file is pushed, Argo CD keeps applying the old one from the remote and the
+application stays Degraded. The GitOps script now refuses to start while
+`manifests/` differs from `origin/main`, with that reason in the message.
+
+## Falco, after everything else has already said no
+
+The other controls decide what is allowed to start. Falco is the only one that
+sees what a running container does, which is what matters once a legitimate pod
+is compromised. Two rules cover the first moves after someone gets in: a shell in
+a container, and a read of the ServiceAccount token.
+
+## The incident simulation proves the rule, not the fear
+
+Reading the token in the application pod raises no alert, because no token is
+mounted there. Rather than leave that looking like a broken rule, the simulation
+creates a pod that does mount one, reads it once and deletes it. The alert that
+matters most in the demo is the one that never had to fire.
